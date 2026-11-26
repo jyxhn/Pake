@@ -71,13 +71,46 @@ pub fn set_system_tray(
 
     let menu = if allow_multi_window {
         MenuBuilder::new(app)
-            .items(&[&new_window, &hide_app, &show_app, &quit])
+            .items(&[&new_window, &hide_app, &show_app])
             .build()?
     } else {
         MenuBuilder::new(app)
-            .items(&[&hide_app, &show_app, &quit])
+            .items(&[&hide_app, &show_app])
             .build()?
     };
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(state) = app.try_state::<crate::app::window::MultiWindowState>() {
+            if let Some(directory) = &state.pake_config.runtime_extensions {
+                let extensions = crate::app::extensions::installed(directory);
+
+                if extensions.iter().any(|extension| extension.page.is_some()) {
+                    let title = match UiLanguage::system() {
+                        UiLanguage::English => "Extensions",
+                        UiLanguage::SimplifiedChinese => "扩展设置",
+                        UiLanguage::TraditionalChinese => "擴充功能設定",
+                    };
+
+                    let submenu = tauri::menu::Submenu::new(app, title, true)?;
+
+                    for extension in extensions.iter().filter(|extension| extension.page.is_some()) {
+                        submenu.append(&tauri::menu::MenuItem::with_id(
+                            app,
+                            format!("tray_extension:{}", extension.id),
+                            &extension.name,
+                            true,
+                            None::<&str>,
+                        )?)?;
+                    }
+
+                    menu.append(&submenu)?;
+                }
+            }
+        }
+    }
+
+    menu.append(&quit)?;
 
     app.app_handle().remove_tray_by_id("pake-tray");
 
@@ -111,7 +144,12 @@ pub fn set_system_tray(
                 let _ = app.save_window_state(flags);
                 app.exit(0);
             }
-            _ => (),
+            _ => {
+                #[cfg(target_os = "windows")]
+                if let Some(id) = event.id().as_ref().strip_prefix("tray_extension:") {
+                    crate::app::extensions::open_page(app, id);
+                }
+            }
         })
         .on_tray_icon_event(move |tray, event| {
             if let TrayIconEvent::Click {
