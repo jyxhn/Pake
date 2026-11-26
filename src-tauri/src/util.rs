@@ -30,17 +30,7 @@ pub fn get_pake_config() -> (PakeConfig, Config) {
     #[cfg(not(feature = "runtime-template"))]
     let runtime_dir: Option<PathBuf> = None;
     match apply_runtime_override(pake_config, tauri_config, runtime_dir.as_deref()) {
-        Ok((mut pake_config, tauri_config)) => {
-            #[cfg(all(target_os = "windows", not(feature = "runtime-template")))]
-            {
-                pake_config.runtime_extensions = env::current_exe()
-                    .ok()
-                    .and_then(|exe| runtime_dir_for_exe(&exe))
-                    .and_then(|dir| runtime_extensions(&dir));
-            }
-
-            (pake_config, tauri_config)
-        },
+        Ok(configs) => configs,
         Err(error) => {
             eprintln!("[Pake] Invalid runtime configuration: {error}");
             std::process::exit(1);
